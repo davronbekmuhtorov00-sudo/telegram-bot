@@ -1,24 +1,23 @@
 import os
 import asyncio
-from groq import Groq
-from telegram import Bot
-from telegram.error import TelegramError
-import schedule
-import time
-import logging
 import random
+import time
+import schedule
+import logging
+from telegram import Bot
+from groq import Groq
 
+# Logging sozlamalari
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # ========== SOZLAMALAR ==========
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = "@togrisini_etsa"
-POSTS_PER_DAY = 15
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-# ================================
+CHANNEL_ID = "@togrisini_etsa"
 
-POST_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23][:POSTS_PER_DAY]
+client = Groq(api_key=GROQ_API_KEY)
+bot = Bot(token=BOT_TOKEN)
 
 MAVZULAR = [
     "пул ва бойлик — одамлар буни очиқчасига гапирмайди, лекин ҳамманинг миясида",
@@ -33,7 +32,7 @@ MAVZULAR = [
     "одамларнинг қилиғи — кузатсанг, кўп нарса кўринади",
     "соғлиқ ва ҳаёт тарзи — эътибор бермасак кейин афсус қиламиз",
     "орзу ва мақсад — баъзилар орзу қилади, баъзилар ҳаракат қилади",
-    "ёлғиз қолиш ва ўз-ўзини топиш — бу ёмон нарса эмас",
+    "ёлғиз қолиш ва ўз-узини топиш — бу ёмон нарса эмас",
     "пул топиш йўллари ва алдовлар — кўпчилик бу ҳақда билмайди",
     "ҳаётда танлов — ҳар бир қарор кейинги 5 йилни белгилайди",
     "ёш ва тажриба — 20 ёшда ва 40 ёшда дунёни бошқача кўрасан",
@@ -48,59 +47,44 @@ MAVZULAR = [
     "ҳаётнинг ўтиши — кеча бола эдинг, бугун ўзинг ҳам билмайсан қаерга кетаётганингни",
 ]
 
-groq_client = Groq(api_key=GROQ_API_KEY)
-bot = Bot(token=BOT_TOKEN)
+# 15 ta aniq vaqt
+VAQTLAR = [
+    "07:00", "08:00", "09:00", "10:00", "11:00", 
+    "12:00", "13:00", "14:00", "15:00", "16:00", 
+    "17:00", "18:00", "19:00", "20:00", "21:00"
+]
 
-def generate_post() -> str:
+def generate_post():
     mavzu = random.choice(MAVZULAR)
-    prompt = f"""Telegram канал учун 1 та пост ёз.
-
-Мавзу: {mavzu}
-
-Қатъий қоидалар:
-- Ўзбек КИРИЛЛ ёзувида бўлсин
-- Фақат БИТТА жумла
-- Минимал 8 та, максимал 15 та сўз
-- Ҳақиқий, кескин, ўйлантирувчи гап
-- Эмодзи ва ҳэштэг ҚЎШМа
-- "Тўғрисини этсам" ёки "Тўғриси" деб БОШЛАМА
-- Фақат жумланинг ўзини ёз, бошқа ҳеч нарса ёзма"""
-
-    response = groq_client.chat.completions.create(
+    prompt = f"Мавзу: {mavzu}. 1 ta keskin, achchiq haqiqat yoz. (8-15 soz, o'zbek kirill, #togrisini #xakikat xashtaglari bilan. 'To'g'risini aytsam' deb boshlama)."
+    
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
         model="llama-3.3-70b-versatile",
-        max_tokens=200,
-        messages=[{"role": "user", "content": prompt}]
     )
-    return response.choices[0].message.content.strip()
+    return chat_completion.choices[0].message.content.strip()
 
 async def send_post():
     try:
         post_text = generate_post()
         await bot.send_message(chat_id=CHANNEL_ID, text=post_text)
-        logger.info(f"✅ Post yuborildi: {post_text[:60]}...")
-    except TelegramError as e:
-        logger.error(f"❌ Telegram xatosi: {e}")
+        logger.info(f"✅ Yuborildi: {post_text[:30]}...")
     except Exception as e:
         logger.error(f"❌ Xato: {e}")
 
 def run_async_post():
     asyncio.run(send_post())
 
-def setup_schedule():
-    for hour in POST_HOURS:
-        schedule.every().day.at(f"{hour:02d}:00").do(run_async_post)
-        logger.info(f"📅 {hour:02d}:00 da post")
-
-def main():
+if __name__ == "__main__":
     logger.info("🤖 Bot ishga tushdi!")
-    logger.info(f"📢 Kanal: {CHANNEL_ID}")
-    logger.info(f"📊 Kuniga: {POSTS_PER_DAY} ta post")
-    setup_schedule()
-    logger.info("🚀 Test post yuborilmoqda...")
+    logger.info(f"📅 Postlar quyidagi soatlarda chiqadi: {', '.join(VAQTLAR)}")
+    
+    for vaqt in VAQTLAR:
+        schedule.every().day.at(vaqt).do(run_async_post)
+    
+    # Test uchun bitta post
     run_async_post()
+    
     while True:
         schedule.run_pending()
         time.sleep(60)
-
-if __name__ == "__main__":
-    main()
